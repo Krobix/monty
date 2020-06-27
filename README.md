@@ -14,6 +14,8 @@
 
 ## Brief
 
+> See also: _[montyc (A compiler implementation for monty.)](https://github.com/mental32/montyc)_
+
 Monty (/ˈmɒntɪ/) is an attempt to provide a completely organic dialect of
 Python that is capable of being AOT compiled in the same manner as C,
 Haskell or Rust are.

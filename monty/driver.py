@@ -16,10 +16,12 @@ SourceInput = Union[TextIO, str]
 
 @dataclass
 class CompilationUnit:
-    module_name: str
+    name: str
     type_ctx: InferenceEngine = field(default_factory=InferenceEngine)
 
-    _functions: Dict[str, Function] = field(default_factory=dict)
+    modules: List[str] = field(default_factory=list)
+
+    _functions: Dict[str, Function] = field(default_factory=dict, repr=False)
 
     def __post_init__(self):
         type_id = self.type_ctx.insert(Primitive.Unknown)
