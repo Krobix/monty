@@ -1,3 +1,5 @@
+import ast
+
 import pytest
 
 import monty
@@ -18,9 +20,9 @@ class TestSanity:
     def test_unit_main(self):
         unit = monty.driver.compile_source(SOURCE)
 
-        # assert (func := unit.get_function("__main__.main")) is not None, "No function named \"__main__.main\" was found!"
-        # assert func.return_type == "int"
-        # assert not func.arguments
+        assert (func := unit.get_function("__main__.main")) is not None, "No function named \"__main__.main\" was found!"
+        assert func.return_type.id == "int", ast.dump(func.return_type)
+        assert not func.arguments
 
     def test_basic_inference_engine(self):
         from monty.typechecker import InferenceEngine, Primitive, Callable, List

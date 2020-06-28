@@ -8,7 +8,7 @@ import monty
 from monty.language import Scope, Function, Item
 from monty.errors import CompilationException
 from monty.diagnostic import Diagnostic, Error
-from monty.mir import Ebb
+from monty.mir import Ebb, ModuleBuilder
 from monty.typechecker import InferenceEngine, Primitive, TypeId
 
 SourceInput = Union[TextIO, str]
@@ -16,10 +16,9 @@ SourceInput = Union[TextIO, str]
 
 @dataclass
 class CompilationUnit:
-    name: str
     type_ctx: InferenceEngine = field(default_factory=InferenceEngine)
 
-    modules: List[str] = field(default_factory=list)
+    modules: Dict[str, ModuleBuilder] = field(default_factory=dict)
 
     _functions: Dict[str, Function] = field(default_factory=dict, repr=False)
 
@@ -73,10 +72,13 @@ class CompilationUnit:
         )
 
     def get_function(self, name: str) -> Optional[Function]:
-        return self._functions.get(name, None)
+        module, name, *_ = name.split(".", maxsplit=1)
 
-    def set_function(self, name: str, func: Function):
-        self._functions[name] = func
+        for item in self.modules[module].walk_function_items():
+            if (func := item.function).name == name:
+                return func
+        else:
+            return None
 
 
 def compile_source(
@@ -95,12 +97,13 @@ def compile_source(
 
     assert isinstance(root, ast.Module), f"Can only process modules!"
 
-    root_item = Item(ty=Primitive.Module, node=root, scope=Scope.from_node(root))
+    root_item = Item(ty=Primitive.Module, node=root)
 
     if issues := root_item.validate():
         raise CompilationException(issues)
 
-    unit = CompilationUnit(module_name)
+    unit = CompilationUnit()
+    unit.modules[module_name] = ModuleBuilder(root_item)
 
     if issues := monty.typechecker.typecheck(item=root_item, unit=unit):
         raise CompilationException(issues)
@@ -108,7 +111,7 @@ def compile_source(
     # TODO: Lowering AST/Items (root_items) into HIR/Items (lowered_root)
     # lowered_root = lower_into_hir(root_items)
 
-    # TODO: Lowering HIR/Items (lowered_root) into MIR/Items (compiled_root)
-    # compiled_root = lower_into_mir(lowered_root)
+    for builder in unit.modules.values():
+        builder.output = builder.lower_into_mir()
 
     return unit

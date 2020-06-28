@@ -1,7 +1,23 @@
 import ast
 from dataclasses import field, dataclass
+from typing import Dict, Any, Iterator
 
+from monty.language import Item
 from monty.mir import Ebb
+
+
+@dataclass
+class ModuleBuilder:
+    root_item: Item
+    output: Any = field(default=None)
+
+    def walk_function_items(self) -> Iterator[Item]:
+        for sub in self.root_item.scope.items:
+            if sub.function is not None:
+                yield sub
+
+    def lower_into_mir(self) -> Dict[str, Ebb]:
+        return {item.function.name: MirBuilder.compile_function(self, item.function) for item in self.walk_function_items()}
 
 
 @dataclass
@@ -12,7 +28,7 @@ class MirBuilder(ast.NodeVisitor):
     ebb: Ebb = field(default_factory=Ebb)
 
     @classmethod
-    def compile_function(cls, unit: CompilationUnit, func: Function) -> Ebb:
+    def compile_function(cls, unit: "monty.driver.CompilationUnit", func: "Function") -> Ebb:
         self = cls(unit)
         self.visit(func.node)
         return self.ebb
@@ -26,6 +42,10 @@ class MirBuilder(ast.NodeVisitor):
         target = assign.targets[0].id
 
         self.ebb.assign("rv", self.ebb.last_ssa)
+
+    def visit_Pass(self, _):
+        self.ebb.using_clean_block()
+        self.ebb.nop()
 
     def visit_Constant(self, const):
         self.ebb.using_clean_block()
