@@ -4,10 +4,12 @@ from typing import Dict, Any, Iterator
 
 from monty.language import Item
 from monty.mir import Ebb
+from monty.typechecker import TypeId, TypeInfo, Callable
 
 
 @dataclass
 class ModuleBuilder:
+    unit: "monty.driver.CompilationUnit"
     root_item: Item
     output: Any = field(default=None)
 
@@ -17,12 +19,12 @@ class ModuleBuilder:
                 yield sub
 
     def lower_into_mir(self) -> Dict[str, Ebb]:
-        return {item.function.name: MirBuilder.compile_function(self, item.function) for item in self.walk_function_items()}
+        return {item.function.name: MirBuilder.compile_function(self.unit, item.function) for item in self.walk_function_items()}
 
 
 @dataclass
 class MirBuilder(ast.NodeVisitor):
-    """Takes a regular AST and produces some MIR"""
+    """Takes a regular AST and produces some MIR."""
 
     unit: "monty.driver.CompilationUnit"
     ebb: Ebb = field(default_factory=Ebb)
@@ -30,6 +32,19 @@ class MirBuilder(ast.NodeVisitor):
     @classmethod
     def compile_function(cls, unit: "monty.driver.CompilationUnit", func: "Function") -> Ebb:
         self = cls(unit)
+
+        assert func.type_id is not None
+
+        callable = unit.type_ctx[func.type_id]
+
+        assert isinstance(callable, Callable)
+
+        def reveal(type_id: TypeId) -> TypeInfo:
+            return unit.type_ctx[type_id]
+
+        self.ebb.parameters += [callable.parameters]
+        self.ebb.returns += [unit.type_ctx[callable.output]]
+
         self.visit(func.node)
         return self.ebb
 

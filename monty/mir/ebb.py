@@ -5,6 +5,7 @@ from enum import IntEnum, auto
 from typing import Tuple, Optional, List, Dict, Set
 
 from ..language import Function
+from ..typechecker import TypeId
 
 
 SSAValue = int
@@ -17,6 +18,9 @@ class InstrOp(IntEnum):
     Assign = auto()
     NoOp = auto()
 
+    def __str__(self) -> str:
+        return self.name.lower()
+
 
 @dataclass
 class BlockInstr:
@@ -28,11 +32,14 @@ class BlockInstr:
 @dataclass
 class BasicBlock:
     instructions: List[BlockInstr] = field(default_factory=list)
+    parameters: List[Tuple[SSAValue, TypeId]] = field(default_factory=list)
 
 
 @dataclass
 class Ebb:
     """A collection of basic blocks used to form a routine."""
+    parameters: List[TypeId] = field(default_factory=list)
+    returns: List[TypeId] = field(default_factory=list)
 
     blocks: Dict[BlockId, BasicBlock] = field(default_factory=dict)
     namespace: Set[str] = field(default_factory=set)
@@ -49,6 +56,9 @@ class Ebb:
     @property
     def cursor(self):
         return self.blocks[self._cursor]
+
+    def sorted_blocks(self) -> List[Tuple[BlockId, BasicBlock]]:
+        return sorted(self.blocks.items())
 
     def using_clean_block(self) -> BlockId:
         if not self._cursor_pinned and self._cursor is None or self.cursor.instructions:

@@ -51,6 +51,7 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
             output = unit.resolve_annotation(scope, func.return_type)
 
             tcx[type_id] = Callable(arguments, output)
+            func.type_id = type_id
 
             return typecheck(scoped_item, unit, item_type_id=type_id)
 

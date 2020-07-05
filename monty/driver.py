@@ -103,7 +103,7 @@ def compile_source(
         raise CompilationException(issues)
 
     unit = CompilationUnit()
-    unit.modules[module_name] = ModuleBuilder(root_item)
+    unit.modules[module_name] = ModuleBuilder(unit, root_item)
 
     if issues := monty.typechecker.typecheck(item=root_item, unit=unit):
         raise CompilationException(issues)
