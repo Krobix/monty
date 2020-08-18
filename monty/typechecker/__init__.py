@@ -77,7 +77,8 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
             annotation = tcx[annotation_id]
 
             if node.value is not None:
-                pass  # TODO: Type inference on RValue and assert the TypeId matches that of annotation.
+                ty = unit.reveal_type(node.value)
+                assert ty == annotation_id, f"{ty=!r}, {annotation_id=!r}"
 
             last_rib = (ribs and ribs[-1]) or {}
 
@@ -87,16 +88,11 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
                 node.target, ast.Name
             ), f"Can't handle other target forms yet."
 
-            # print(f"+ : {ident}: {tcx.reconstruct(annotation_id)}")
-            # print(ribs)
-
         elif real_ty is Primitive.Return:
             assert isinstance(item.node, ast.FunctionDef)
             value = node.value
 
-            expr_ty = unit.reveal_type(node.value)
-
-            print("<<", expr_ty, tcx[item_type_id], tcx)
+            expr_ty = unit.reveal_type(node.value, ribs)
 
             if expr_ty != tcx[item_type_id].output:
                 type_errors.append(TypeCheckError(f"Bad return value for function!"))
@@ -107,6 +103,3 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
             )
 
     return type_errors
-
-def typecheck_ast(node: ast.AST, type_errors):
-    pass

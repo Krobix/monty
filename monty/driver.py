@@ -33,13 +33,12 @@ class CompilationUnit:
             "int": i64,
             "i64": i64,
             "i32": self.type_ctx.get_id_or_insert(Primitive.I32),
-            "none": self.type_ctx.get_id_or_insert(Primitive.Nothing)
+            "none": self.type_ctx.get_id_or_insert(Primitive.Nothing),
+            "bool": self.type_ctx.get_id_or_insert(Primitive.Bool),
         }
 
-    def reveal_type(self, node: ast.AST) -> Optional[TypeId]:
+    def reveal_type(self, node: ast.AST, ribs = None) -> Optional[TypeId]:
         """Attempt to reveal the [product] type of a AST node."""
-
-        print(ast.dump(node))
 
         if isinstance(node, ast.BinOp):
             op = node.op
@@ -55,15 +54,31 @@ class CompilationUnit:
             lty = self.type_ctx[lhs]
             rty = self.type_ctx[rhs]
 
-            print(self.type_ctx)
-
             if lty == Primitive.I64 and rty == Primitive.I64:
                 return self.type_ctx.get_id_or_insert(Primitive.I64)
             else:
                 raise RuntimeError(f"{lty}, {rty}")
 
+        elif isinstance(node, ast.Compare):
+            return self.type_ctx.get_id_or_insert(Primitive.Bool)
+            # left = self.reveal_type(node.left)
+            # left_ty = self.type_ctx[left]
+
+            # for op, thing, in zip(node.ops, node.comparators):
+            #     return self.type_ctx.get_id_or_insert(left_ty)
+            # else:
+            #     raise RuntimeError(f"{lty}, {rty}")
+
         elif isinstance(node, ast.Constant):
             return self.resolve_annotation(Scope(node), node)
+
+        elif isinstance(node, ast.Name):
+            assert isinstance(node.ctx, ast.Load), f"{ast.dump(node)}"
+            target = node.id
+
+            for stack in ribs[::-1]:
+                if target in stack:
+                    return self.type_ctx.get_id_or_insert(stack[target])
 
         raise RuntimeError(f"We don't know jack... {ast.dump(node)}")
 
@@ -88,6 +103,7 @@ class CompilationUnit:
             builtin_map = {
                 int: Primitive.I64,
                 float: Primitive.Number,
+                bool: Primitive.Bool,
                 type(None): Primitive.None_,
             }
 
@@ -159,5 +175,7 @@ def compile_source(
 
     for builder in unit.modules.values():
         builder.output = builder.lower_into_mir()
+
+    print(unit.modules["__main__"].output["main"])
 
     return unit

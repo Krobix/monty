@@ -1,8 +1,17 @@
+from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Dict, Generic, TypeVar, Optional
+from typing import Dict, Generic, Any, TypeVar, Optional
 from types import MappingProxyType
 
 V = TypeVar("V")
+
+
+@contextmanager
+def swapattr(obj: Any, name: str, default: Any, target: Any):
+    previous = getattr(obj, name, default)
+    setattr(obj, name, target)
+    yield
+    setattr(obj, name, previous)
 
 
 @dataclass
