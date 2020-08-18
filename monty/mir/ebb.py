@@ -16,6 +16,7 @@ class InstrOp(IntEnum):
     IntConst = auto()
     StrConst = auto()
     Assign = auto()
+    Return = auto()
     NoOp = auto()
 
     def __str__(self) -> str:
@@ -108,6 +109,11 @@ class Ebb:
             BlockInstr(op=InstrOp.IntConst, args=[value, bits, signed], ret=slot)
         )
         return slot
+
+    def return_(self, value: int):
+        self.cursor.instructions.append(BlockInstr(
+            op=InstrOp.Return, args=[value], ret=None
+        ))
 
     def nop(self):
         self.cursor.instructions.append(BlockInstr(

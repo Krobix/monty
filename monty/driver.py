@@ -9,7 +9,7 @@ from monty.language import Scope, Function, Item
 from monty.errors import CompilationException
 from monty.diagnostic import Diagnostic, Error
 from monty.mir import Ebb, ModuleBuilder
-from monty.typechecker import InferenceEngine, Primitive, TypeId
+from monty.typechecker import InferenceEngine, Primitive, TypeId, constraints
 
 SourceInput = Union[TextIO, str]
 
@@ -25,6 +25,47 @@ class CompilationUnit:
     def __post_init__(self):
         type_id = self.type_ctx.insert(Primitive.Unknown)
         assert type_id == 0, f"Failed to slot Primitive.Unknown at type_id 0!"
+
+    def get_primitives(self) -> Dict[str, TypeId]:
+        i64 = self.type_ctx.get_id_or_insert(Primitive.I64)
+
+        return {
+            "int": i64,
+            "i64": i64,
+            "i32": self.type_ctx.get_id_or_insert(Primitive.I32),
+            "none": self.type_ctx.get_id_or_insert(Primitive.Nothing)
+        }
+
+    def reveal_type(self, node: ast.AST) -> Optional[TypeId]:
+        """Attempt to reveal the [product] type of a AST node."""
+
+        print(ast.dump(node))
+
+        if isinstance(node, ast.BinOp):
+            op = node.op
+
+            if isinstance(op, ast.Add):
+                op = constraints.Operation.Add
+            else:
+                assert False
+
+            lhs = self.reveal_type(node.left)
+            rhs = self.reveal_type(node.right)
+
+            lty = self.type_ctx[lhs]
+            rty = self.type_ctx[rhs]
+
+            print(self.type_ctx)
+
+            if lty == Primitive.I64 and rty == Primitive.I64:
+                return self.type_ctx.get_id_or_insert(Primitive.I64)
+            else:
+                raise RuntimeError(f"{lty}, {rty}")
+
+        elif isinstance(node, ast.Constant):
+            return self.resolve_annotation(Scope(node), node)
+
+        raise RuntimeError(f"We don't know jack... {ast.dump(node)}")
 
     def resolve_annotation(
         self,
@@ -45,14 +86,18 @@ class CompilationUnit:
         def check_builtins() -> Optional[TypeId]:
 
             builtin_map = {
-                int: Primitive.Integer,
-                type(None): Primitive.None_
+                int: Primitive.I64,
+                float: Primitive.Number,
+                type(None): Primitive.None_,
             }
 
             if isinstance(tree, ast.Constant):
-                assert (value := tree.value) is None or isinstance(value, (str, int))
+                value = tree.value
+                assert value is None or isinstance(value, (str, int))
 
-                return self.type_ctx.get_id_or_insert(builtin_map.get(type(value), Primitive.Unknown))
+                kind = builtin_map.get(type(value), Primitive.Unknown)
+
+                return self.type_ctx.get_id_or_insert(kind)
 
             elif isinstance(tree, ast.Name) and (builtin := getattr(builtins, tree.id)):
                 assert isinstance(tree.ctx, ast.Load)
@@ -103,6 +148,7 @@ def compile_source(
         raise CompilationException(issues)
 
     unit = CompilationUnit()
+    unit.get_primitives()
     unit.modules[module_name] = ModuleBuilder(unit, root_item)
 
     if issues := monty.typechecker.typecheck(item=root_item, unit=unit):

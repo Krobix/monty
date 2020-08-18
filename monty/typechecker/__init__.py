@@ -1,9 +1,10 @@
 import ast
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Dict
 from dataclasses import dataclass, field
 
 from .type_info import *
 from .inference_engine import *
+from .constraints import *
 
 from monty.language import Item
 from monty.driver import CompilationUnit
@@ -93,10 +94,9 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
             assert isinstance(item.node, ast.FunctionDef)
             value = node.value
 
-            if isinstance(value, ast.Constant):
-                expr_ty = unit.resolve_annotation(scope, value)
-            else:
-                expr_ty = tcx.get_id_or_insert(Primitive.Unknown)
+            expr_ty = unit.reveal_type(node.value)
+
+            print("<<", expr_ty, tcx[item_type_id], tcx)
 
             if expr_ty != tcx[item_type_id].output:
                 type_errors.append(TypeCheckError(f"Bad return value for function!"))
@@ -107,3 +107,6 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
             )
 
     return type_errors
+
+def typecheck_ast(node: ast.AST, type_errors):
+    pass

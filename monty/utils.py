@@ -40,3 +40,6 @@ class SSAMap(Generic[V]):
 
     def __setitem__(self, key: int, value: V):
         self.set_unchecked(key, value)
+
+    def __iter__(self):
+        return iter(self.__internal.items())

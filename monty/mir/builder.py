@@ -39,11 +39,8 @@ class MirBuilder(ast.NodeVisitor):
 
         assert isinstance(callable, Callable)
 
-        def reveal(type_id: TypeId) -> TypeInfo:
-            return unit.type_ctx[type_id]
-
         self.ebb.parameters += [callable.parameters]
-        self.ebb.returns += [unit.type_ctx[callable.output]]
+        self.ebb.returns += [callable.output]
 
         self.visit(func.node)
         return self.ebb
@@ -75,3 +72,9 @@ class MirBuilder(ast.NodeVisitor):
             self.ebb.str_const(st_ref)
         else:
             self.ebb.int_const(value)
+
+    def visit_Return(self, ret):
+
+        self.generic_visit(ret)
+
+        self.ebb.return_(self.ebb.last_ssa)

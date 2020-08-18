@@ -33,6 +33,9 @@ class Primitive(TypeInfo, IntEnum):
     Nothing = auto()
     None_ = auto()
 
+    I64 = auto()
+    I32 = auto()
+
     def reconstruct(self, tcx) -> str:
         return self.name
 
