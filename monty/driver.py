@@ -37,19 +37,23 @@ class CompilationUnit:
             "bool": self.type_ctx.get_id_or_insert(Primitive.Bool),
         }
 
-    def reveal_type(self, node: ast.AST, ribs = None) -> Optional[TypeId]:
+    def reveal_type(self, node: ast.AST, ribs) -> Optional[TypeId]:
         """Attempt to reveal the [product] type of a AST node."""
+
+        # print("@", ast.dump(node), ribs)
 
         if isinstance(node, ast.BinOp):
             op = node.op
 
             if isinstance(op, ast.Add):
                 op = constraints.Operation.Add
+            elif isinstance(op, ast.Sub):
+                op = constraints.Operation.Sub
             else:
                 assert False
 
-            lhs = self.reveal_type(node.left)
-            rhs = self.reveal_type(node.right)
+            lhs = self.reveal_type(node.left, ribs)
+            rhs = self.reveal_type(node.right, ribs)
 
             lty = self.type_ctx[lhs]
             rty = self.type_ctx[rhs]
@@ -176,6 +180,6 @@ def compile_source(
     for builder in unit.modules.values():
         builder.output = builder.lower_into_mir()
 
-    print(unit.modules["__main__"].output["main"])
+    # print(unit.modules["__main__"].output["main"])
 
     return unit

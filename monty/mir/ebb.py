@@ -15,13 +15,19 @@ BlockId = int
 class InstrOp(IntEnum):
     IntConst = auto()
     StrConst = auto()
-    Assign = auto()
+
     Return = auto()
     NoOp = auto()
+
     IAdd = auto()
+    ISub = auto()
+
     UseVar = auto()
+    Assign = auto()
+
     Jump = auto()
     IntCmp = auto()
+
     BInt = auto()
     BoolConst = auto()
     BranchIntCmp = auto()
@@ -80,6 +86,10 @@ class Ebb:
 
         return ident
 
+    def using_some_block(self) -> BlockId:
+        if self._cursor is None:
+            self.using_clean_block()
+
     @contextmanager
     def pin_head(self):
         self._cursor_pinned = True
@@ -95,9 +105,9 @@ class Ebb:
     def jump_to_block(self, ident: BlockId):
         self.cursor.instructions.append(BlockInstr(op=InstrOp.Jump, args=[ident], ret=None))
 
-    def create_block(self) -> Tuple[BlockId, BasicBlock]:
+    def create_block(self, *, parameters: Optional[List[Tuple[SSAValue, TypeId]]] = None) -> Tuple[BlockId, BasicBlock]:
         ident = (self.blocks and (max(self.blocks.keys()) + 1)) or 0
-        block = BasicBlock()
+        block = BasicBlock() if parameters is None else BasicBlock(parameters=parameters)
 
         self.blocks[ident] = block
 
@@ -105,7 +115,7 @@ class Ebb:
 
     @contextmanager
     def with_block(self):
-        ident, block, = self.create_block()
+        ident, _, = self.create_block()
         current = self._cursor
         self.switch_to_block(ident)
         yield ident
@@ -174,6 +184,13 @@ class Ebb:
         slot = self._next_ssa_value()
         self.cursor.instructions.append(
             BlockInstr(op=InstrOp.IAdd, args=[lhs, rhs], ret=slot)
+        )
+        return slot
+
+    def isub(self, lhs: int, rhs: int) -> SSAValue:
+        slot = self._next_ssa_value()
+        self.cursor.instructions.append(
+            BlockInstr(op=InstrOp.ISub, args=[lhs, rhs], ret=slot)
         )
         return slot
 

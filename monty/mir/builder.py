@@ -23,7 +23,7 @@ class ModuleBuilder:
                 seen.add(sub.function.node)
 
     def lower_into_mir(self) -> Dict[str, Ebb]:
-        return {item.function.name: MirBuilder.compile_function(self.unit, item.function) for item in self.walk_function_items()}
+        return {item.function.name: MirBuilder.compile_function(self.unit, item) for item in self.walk_function_items()}
 
 
 @dataclass
@@ -31,19 +31,22 @@ class MirBuilder(ast.NodeVisitor):
     """Takes a regular AST and produces some MIR."""
 
     unit: "monty.driver.CompilationUnit"
+    item: "mondy.language.Item"
     ebb: Ebb = field(default_factory=Ebb)
 
     nodes_to_ssa: Dict[ast.AST, SSAValue] = field(default_factory=dict)
 
     def __getattribute__(self, key):
         if key.startswith("visit_"):
-            print(f"gettattr(self, {key=!r})")
+            pass
+            # print(f"gettattr(self, {key=!r})")
 
         return object.__getattribute__(self, key)
 
     @classmethod
-    def compile_function(cls, unit: "monty.driver.CompilationUnit", func: "Function") -> Ebb:
-        self = cls(unit)
+    def compile_function(cls, unit: "monty.driver.CompilationUnit", item: Item) -> Ebb:
+        self = cls(unit, item)
+        func = item.function
 
         assert func.type_id is not None
 
@@ -54,20 +57,21 @@ class MirBuilder(ast.NodeVisitor):
         self.ebb.parameters += [callable.parameters]
         self.ebb.returns += [callable.output]
 
+        self.ebb.using_clean_block()
         self.visit(func.node)
+
         return self.ebb
 
     def visit_AnnAssign(self, assign):
-        self.ebb.using_clean_block()
+        self.ebb.using_some_block()
 
-        with self.ebb.pin_head():
-            self.generic_visit(assign)
+        self.generic_visit(assign)
 
         value = self.nodes_to_ssa[assign.value]
 
         target = assign.target.id
 
-        self.ebb.assign(target, value, self.unit.reveal_type(assign.value))
+        self.ebb.assign(target, value, self.unit.reveal_type(assign.value, self.item.ribs))
 
     def visit_Pass(self, _):
         self.ebb.using_clean_block()
@@ -76,15 +80,22 @@ class MirBuilder(ast.NodeVisitor):
     def visit_Compare(self, comp):
         left = comp.left
 
-        self.visit(left)
+        # print(ast.dump(comp))
 
-        result_type = self.unit.reveal_type(left)
+        def visit_name(self, name):
+            assert isinstance(name.ctx, ast.Load)
+            self.nodes_to_ssa[name] = self.ebb.use_var(name.id)
+
+        with swapattr(self, "_visit_name", None, visit_name):
+            self.visit(left)
+
+        result_type = self.unit.reveal_type(left, self.item.ribs)
         result = self.nodes_to_ssa[left]
 
         for op, rvalue, in zip(comp.ops, comp.comparators):
-            rvalue_type = self.unit.reveal_type(rvalue)
+            rvalue_type = self.unit.reveal_type(rvalue, self.item.ribs)
 
-            print(ast.dump(rvalue))
+            # print(ast.dump(rvalue))
 
             self.visit(rvalue)
 
@@ -97,14 +108,16 @@ class MirBuilder(ast.NodeVisitor):
                 rvalue_type = Primitive.I64
 
             if rvalue_type in (Primitive.I64, Primitive.I32, Primitive.Integer):
-                if isinstance(op, ast.Eq):
-                    result = self.ebb.icmp("eq", result, rvalue_ssa)
+                ops = {
+                    ast.Eq: "eq",
+                    ast.NotEq: "neq",
+                    ast.Gt: "gt",
+                }
 
-                elif isinstance(op, ast.NotEq):
-                    result = self.ebb.icmp("neq", result, rvalue_ssa)
-
+                if (op := type(op)) not in ops:
+                    raise Exception(f"Unknown op {ast.dump(comp)=!r}")
                 else:
-                    raise Exception("Unknown op")
+                    result = self.ebb.icmp(ops[op], result, rvalue_ssa)
 
                 i64 = self.unit.type_ctx.get_id_or_insert(Primitive.I64)
                 result = self.ebb.bint(i64, result)
@@ -114,7 +127,7 @@ class MirBuilder(ast.NodeVisitor):
 
         result_type = self.unit.type_ctx[result_type]
 
-        print(">>", result_type)
+        # print(">>", result_type)
 
         if result_type != Primitive.Bool:
             if result_type in (Primitive.I64, Primitive.I32, Primitive.Integer):
@@ -122,8 +135,53 @@ class MirBuilder(ast.NodeVisitor):
 
         self.nodes_to_ssa[comp] = result
 
+    def visit_While(self, while_):
+        def visit_name(self, name):
+            assert isinstance(name.ctx, ast.Load)
+            self.nodes_to_ssa[name] = self.ebb.use_var(name.id)
+
+        with self.ebb.with_block() as head:
+            with swapattr(self, "_visit_name", None, visit_name):
+                self.visit(while_.test)
+
+            value = self.nodes_to_ssa[while_.test]
+            i64 = self.unit.type_ctx.get_id_or_insert(Primitive.I64)
+            value = self.ebb.bint(i64, value)
+
+            one = self.ebb.int_const(1)
+
+            with self.ebb.with_block() as while_body:
+                for node in while_.body:
+                    self.visit(node)
+
+                self.ebb.jump_to_block(head)
+
+            self.ebb.br_icmp("eq", value, one, while_body)
+
+        # Inline the while test in the current block then jump into the body
+
+        with swapattr(self, "_visit_name", None, visit_name):
+            self.visit(while_.test)
+
+        value = self.nodes_to_ssa[while_.test]
+        i64 = self.unit.type_ctx.get_id_or_insert(Primitive.I64)
+        value = self.ebb.bint(i64, value)
+
+        one = self.ebb.int_const(1)
+
+        self.ebb.br_icmp("eq", value, one, while_body)
+        self.ebb.using_clean_block()
+
+        for block_id, block in self.ebb.blocks.items():
+            print(f"\t{block_id=!r} =>")
+
+            for instr in block.instructions:
+                print(f"\t\t{instr=!r}")
+
+        # raise Exception(f"{ast.dump(while_)=!r}")
+
     def visit_If(self, if_):
-        print(ast.dump(if_))
+        # print(ast.dump(if_))
 
         assert isinstance(if_.test, ast.Name)
 
@@ -151,21 +209,31 @@ class MirBuilder(ast.NodeVisitor):
         self.ebb.jump_to_block(tail)
 
     def visit_BinOp(self, binop):
-        self.ebb.using_clean_block()
+        self.ebb.using_some_block()
 
-        self.generic_visit(binop)
+        print(ast.dump(binop))
+
+        def visit_name(self, name):
+            assert isinstance(name.ctx, ast.Load)
+            self.nodes_to_ssa[name] = self.ebb.use_var(name.id)
+
+        with swapattr(self, "_visit_name", None, visit_name):
+            self.generic_visit(binop)
 
         lhs = self.nodes_to_ssa[binop.left]
         rhs = self.nodes_to_ssa[binop.right]
 
-        ty = self.unit.reveal_type(binop)
+        ty = self.unit.reveal_type(binop, self.item.ribs)
 
         assert self.unit.type_ctx[ty] == Primitive.I64, f"{self.unit.type_ctx.reconstruct(ty)!r}"
 
         kind = self.unit.type_ctx[ty]
 
         if kind in (Primitive.I64, Primitive.I32, Primitive.Integer):
-            value = self.ebb.iadd(lhs, rhs)
+            value = {
+                ast.Add: self.ebb.iadd,
+                ast.Sub: self.ebb.isub,
+            }[type(binop.op)](lhs, rhs)
         else:
             raise Exception(f"Attempted BinOp on unknown kinds {ast.dump(binop)}")
 

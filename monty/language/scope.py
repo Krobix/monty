@@ -1,9 +1,9 @@
 import ast
 from dataclasses import dataclass, field
 from enum import IntEnum, auto
-from typing import List, Iterator, Union, Optional
+from typing import List, Iterator, Union, Optional, Dict
 
-from monty.typechecker import Callable, Primitive
+from monty.typechecker import Callable, Primitive, TypeInfo
 
 from .item import Item, ScopeableNodes
 
@@ -17,6 +17,7 @@ class Scope:
     node: ast.AST
     items: List["Item"] = field(default_factory=list)
     parent: Optional["Scope"] = None
+    ribs: List[Dict[str, TypeInfo]] = field(default_factory=list)
 
     def __hash__(self):
         return hash(self.node)

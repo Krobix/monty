@@ -1,6 +1,6 @@
 <h1 align="center">Monty</h1>
 
-<h1 align="center">The elegant Python compiler</h1>
+<h1 align="center">An elegant Python compiler</h1>
 
 > **WARNING! USE AT YOUR OWN PERIL**
 
@@ -14,9 +14,9 @@
 
 ## Brief
 
-> See also: _[montyc (A compiler implementation for monty.)](https://github.com/mental32/montyc)_
+> See also: _[montyc (a compiler for monty IR.)](https://github.com/mental32/montyc)_
 
-Monty (/ˈmɒntɪ/) is an attempt to provide a completely organic dialect of
+Monty ([`/ˈmɒntɪ/`](http://ipa-reader.xyz/?text=m%C9%92nt%C9%AA)) is an attempt to provide a completely organic dialect of
 Python that is capable of being AOT compiled in the same manner as C,
 Haskell or Rust are.
 

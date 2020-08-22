@@ -16,7 +16,6 @@ def x() -> int:
 """
 
 class TestSanity:
-
     def test_unit_main(self):
         unit = monty.driver.compile_source(SOURCE)
 

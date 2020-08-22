@@ -31,6 +31,8 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
     # See also: https://rustc-dev-guide.rust-lang.org/name-resolution.html?highlight=rib#scopes-and-ribs
 
     ribs: List[Dict[str, TypeInfo]] = []
+    item.ribs = ribs
+
     tcx = unit.type_ctx
 
     for scoped_item in scope.items:  # Construct the rib stack
@@ -77,7 +79,7 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
             annotation = tcx[annotation_id]
 
             if node.value is not None:
-                ty = unit.reveal_type(node.value)
+                ty = unit.reveal_type(node.value, ribs)
                 assert ty == annotation_id, f"{ty=!r}, {annotation_id=!r}"
 
             last_rib = (ribs and ribs[-1]) or {}
