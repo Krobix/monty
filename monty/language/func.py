@@ -26,6 +26,9 @@ class Function:
 
         self.return_type = self.node.returns or ast.Constant(value=None, kind=None)
 
+    def __hash__(self) -> int:
+        return hash(self.node)
+
     def __repr__(self) -> str:
         args = ", ".join(map(str, self.arguments))
 

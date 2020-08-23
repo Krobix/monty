@@ -31,6 +31,7 @@ class InstrOp(IntEnum):
     BInt = auto()
     BoolConst = auto()
     BranchIntCmp = auto()
+    Call = auto()
 
     def __str__(self) -> str:
         return self.name.lower()  # pylint: disable=no-member

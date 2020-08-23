@@ -1,7 +1,7 @@
 import ast
 import builtins
 from dataclasses import dataclass, field
-from typing import Union, TextIO, List, Dict, Optional, Tuple
+from typing import Union, TextIO, List, Dict, Optional, Tuple, Any
 from io import IOBase
 
 import monty
@@ -41,10 +41,12 @@ class CompilationUnit:
             "bool": self.type_ctx.get_id_or_insert(Primitive.Bool),
         }
 
-    def reveal_type(self, node: ast.AST, ribs) -> Optional[TypeId]:
+    def reveal_type(self, node: ast.AST, scope: Scope) -> Optional[TypeId]:
         """Attempt to reveal the [product] type of a AST node."""
+        assert isinstance(node, ast.AST)
+        assert isinstance(scope, Scope), f"{scope=!r}"
 
-        # print("@", ast.dump(node), ribs)
+        print(f"{ast.dump(node)=!r}")
 
         if isinstance(node, ast.BinOp):
             op = node.op
@@ -56,8 +58,8 @@ class CompilationUnit:
             else:
                 assert False
 
-            lhs = self.reveal_type(node.left, ribs)
-            rhs = self.reveal_type(node.right, ribs)
+            lhs = self.reveal_type(node.left, scope)
+            rhs = self.reveal_type(node.right, scope)
 
             lty = self.type_ctx[lhs]
             rty = self.type_ctx[rhs]
@@ -67,15 +69,11 @@ class CompilationUnit:
             else:
                 raise RuntimeError(f"{lty}, {rty}")
 
-        elif isinstance(node, ast.Compare):
-            return self.type_ctx.get_id_or_insert(Primitive.Bool)
-            # left = self.reveal_type(node.left)
-            # left_ty = self.type_ctx[left]
+        elif isinstance(node, ast.Call):
+            return self.reveal_type(node.func, scope)
 
-            # for op, thing, in zip(node.ops, node.comparators):
-            #     return self.type_ctx.get_id_or_insert(left_ty)
-            # else:
-            #     raise RuntimeError(f"{lty}, {rty}")
+        elif isinstance(node, ast.Compare):  # All comparisions produce a boolean value anyway.
+            return self.type_ctx.get_id_or_insert(Primitive.Bool)
 
         elif isinstance(node, ast.Constant):
             return self.resolve_annotation(Scope(node), node)
@@ -84,9 +82,30 @@ class CompilationUnit:
             assert isinstance(node.ctx, ast.Load), f"{ast.dump(node)}"
             target = node.id
 
-            for stack in ribs[::-1]:
+            # FIXME: Multiple instances of the same name in the same function scope are going to be wrong here.
+            #
+            #     x: int = ...
+            #     x: bool = ...
+            #
+            #    When revealing for the first `x` during AST lowering we'll get the `bool` definition.
+            #    we need to mangle every ast.Name node with a ast.Store context...
+            for stack in scope.ribs[::-1]:
                 if target in stack:
                     return self.type_ctx.get_id_or_insert(stack[target])
+
+            for item_ in scope.items:
+                # print(f">>", item_)
+                func = item_.function
+
+                if func is not None and target == func.name:
+                    assert hasattr(func, "type_id"), f"function object did not have a `type_id` {func=!r}"
+                    return func.type_id
+
+            # couldn't find the name in the local function scope.
+            # search the module's global scope...
+            module_scope = scope.module.scope
+
+            return self.reveal_type(node, module_scope)
 
         raise RuntimeError(f"We don't know jack... {ast.dump(node)}")
 
@@ -107,7 +126,6 @@ class CompilationUnit:
             return None
 
         def check_builtins() -> Optional[TypeId]:
-
             builtin_map = {
                 int: Primitive.I64,
                 float: Primitive.Number,
@@ -149,6 +167,25 @@ class CompilationUnit:
         else:
             return None
 
+    def resolve_into_function(self, obj: Any, scope: Scope) -> Optional[Function]:
+        assert isinstance(obj, ast.Call), f"{obj=!r}"
+
+        # FIXME: at the moment `ast.FunctionDef`s only live in the module scope.
+
+        assert isinstance(obj.func, ast.Name), "Cant do attribute access yet..."
+
+        target = obj.func.id
+
+        for item_ in scope.items:
+            func = item_.function
+
+            if func is not None and target == func.name:
+                assert hasattr(func, "type_id"), f"function object did not have a `type_id` {func=!r}"
+                return func
+        else:
+            return None
+
+
 
 def compile_source(
     source_input: SourceInput, *, module_name: str = "__main__"
@@ -178,12 +215,14 @@ def compile_source(
     if issues := monty.typechecker.typecheck(item=root_item, unit=unit):
         raise CompilationException(issues)
 
-    # TODO: Lowering AST/Items (root_items) into HIR/Items (lowered_root)
-    # lowered_root = lower_into_hir(root_items)
-
     for builder in unit.modules.values():
         builder.output = builder.lower_into_mir()
 
-    # print(unit.modules["__main__"].output["main"])
+    if __debug__:
+        for block_id, block, in unit.modules["__main__"].output["main"].blocks.items():
+            print(f"{block_id=!r}:")
+
+            for instr in block.body:
+                print(f"\t{instr!s}")
 
     return unit

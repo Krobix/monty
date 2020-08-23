@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from itertools import count
-from typing import NamedTuple, Tuple, Dict, final, List, Optional, Any
+from typing import NamedTuple, Tuple, Dict, final, List, Optional, Any, Set
 
 from ..typechecker import TypeId
 from . import VariableId, BlockId, BlockInstr, SSAValue, InstrOp
@@ -30,6 +30,9 @@ class Ebb(NamedTuple):
     # Ebb.variables.{variable_id} -> i64
     variables: Dict[VariableId, TypeId]
 
+    # Ebb.refs.{ref_id} -> Function
+    refs: Dict[SSAValue, Any]
+
     # Ebb.block_id.{block_id} = {b0: iconst.i64(1), b1: iconst.i64(1), b2: iadd(v1, v2)}
     blocks: Dict[BlockId, BasicBlock]
 
@@ -55,6 +58,7 @@ class FluidBlock:
     variables: Dict[VariableId, TypeId] = field(default_factory=dict)
     blocks: Dict[BlockId, BasicBlock] = field(default_factory=dict)
     ssa_value_types: Dict[SSAValue, TypeId] = field(default_factory=dict)
+    refs: Dict[SSAValue, Any] = field(default_factory=dict)
 
     __cursor: Optional[BlockId] = field(init=False, default=None)
     __last_ssa_value: int = -1
@@ -75,16 +79,25 @@ class FluidBlock:
         return slot
 
     def _typecheck(self, value: SSAValue, expected: TypeId):
-        actual = self.ssa_value_types[value]
-        if actual != expected:
+        if (actual := self.ssa_value_types.get(value)) is not None and actual != expected:  # pylint: disable=used-before-assignment
             raise TypeError(f"{value=!r} had type {actual=!r} but {expected=!r}")
+
+    def reference(self, obj: Any) -> SSAValue:
+        if self.refs:
+            ref = max(self.refs) + 1
+        else:
+            ref = 0
+
+        self.refs[ref] = obj
+        return ref
 
     def finalize(self) -> Ebb:
         """Produce a finalized EBB."""
-        parameters = self.parameters[:]
+        parameters = tuple(self.parameters[:])
         return_value = self.returns
         variables = {**self.variables}
         blocks = {**self.blocks}
+        refs = {**self.refs}
 
         assert isinstance(return_value, int), f"{return_value=!r}"
 
@@ -93,6 +106,7 @@ class FluidBlock:
             return_value=return_value,
             variables=variables,
             blocks=blocks,
+            refs=refs
         )
 
     # BasicBlock methods
@@ -162,7 +176,7 @@ class FluidBlock:
         self.variables[ident] = ty
         return self._emit(op=InstrOp.Assign, args=[value], ret=ident)
 
-    # Control-flow
+    # Flow-control
 
     def nop(self):
         """Emit a no-op."""
@@ -179,3 +193,6 @@ class FluidBlock:
         """Return from the function with a value."""
         self._typecheck(value, expected=self.returns)
         return self._emit(op=InstrOp.Return, args=[value], ret=None)
+
+    def call(self, function: SSAValue, *args) -> SSAValue:
+        return self._emit(op=InstrOp.Call, args=[function, args])

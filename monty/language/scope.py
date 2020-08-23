@@ -18,13 +18,14 @@ class Scope:
     items: List["Item"] = field(default_factory=list)
     parent: Optional["Scope"] = None
     ribs: List[Dict[str, TypeInfo]] = field(default_factory=list)
+    module: Optional["Item"] = None
 
     def __hash__(self):
         return hash(self.node)
 
     @classmethod
-    def from_node(cls, node: ScopeableNodes) -> "Scope":
-        walker = ScopeWalker(scope=(s := Scope(node)))
+    def from_node(cls, node: ScopeableNodes, *, module: Optional["Item"] = None) -> "Scope":
+        walker = ScopeWalker(scope=(s := Scope(node, module=module)))
         walker.visit(s.node)
         return walker.scope
 
@@ -38,6 +39,13 @@ class Scope:
 
         return inner
 
+    def get_item_by_node(self, node: ast.AST) -> Optional["Item"]:
+        for item in self.items:
+            if item.node == node:
+                return item
+        else:
+            return None
+
 
 @dataclass
 class ScopeWalker(ast.NodeVisitor):
@@ -46,6 +54,7 @@ class ScopeWalker(ast.NodeVisitor):
     def add_item(self, item):
         if item.scope is not None:
             item.scope.parent = self.scope
+            item.scope.module = self.scope.module
 
         self.scope.items.append(item)
 

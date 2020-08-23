@@ -26,7 +26,8 @@ class Item:
             )
 
         if self.scope is None and self.is_scopable:
-            self.scope = Scope.from_node(self.node)
+            module = self if isinstance(self.node, ast.Module) else None
+            self.scope = Scope.from_node(self.node, module=module)
 
         if self.function is None and isinstance(self.node, ast.FunctionDef):
             self.function = Function(self.node)
@@ -39,7 +40,7 @@ class Item:
         diagnostics = diagnostics or []
 
         if isinstance(self.node, ast.Module):
-            for scoped_item in (module := self.scope).items:
+            for scoped_item in self.scope.items:
                 if isinstance(scoped_item.node, ast.Return):
                     diagnostics.append(Error(f"Found return outside of function!"))
 

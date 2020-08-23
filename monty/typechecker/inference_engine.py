@@ -39,3 +39,7 @@ class InferenceEngine(SSAMap[TypeInfo]):
 
     def reconstruct(self, type_id: TypeId) -> str:
         return self[type_id].reconstruct(self)
+
+    def is_callable(self, type_id: TypeId) -> bool:
+        type_info = self[type_id]
+        return isinstance(type_info, Callable)

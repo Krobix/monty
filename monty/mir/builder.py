@@ -57,7 +57,7 @@ class MirBuilder(ast.NodeVisitor):
         def visit_name(self, name):
             assert isinstance(name.ctx, ast.Load)
             self._ast_node_to_ssa[name] = value = self._ebb.use(name.id)
-            self._ebb.ssa_value_types[value] = self.unit.reveal_type(name, self.item.ribs)
+            self._ebb.ssa_value_types[value] = self.unit.reveal_type(name, self.item.scope)
 
         with swapattr(self, "_visit_name", None, visit_name):
             yield
@@ -66,7 +66,7 @@ class MirBuilder(ast.NodeVisitor):
 
     def visit_AnnAssign(self, assign):
         value_node = assign.value
-        value_ty = self.unit.reveal_type(value_node, self.item.ribs)
+        value_ty = self.unit.reveal_type(value_node, self.item.scope)
 
         self.generic_visit(assign)
 
@@ -130,7 +130,7 @@ class MirBuilder(ast.NodeVisitor):
         lhs = self._ast_node_to_ssa[binop.left]
         rhs = self._ast_node_to_ssa[binop.right]
 
-        ty = self.unit.reveal_type(binop, self.item.ribs)
+        ty = self.unit.reveal_type(binop, self.item.scope)
 
         assert (
             self.unit.type_ctx[ty] == Primitive.I64
@@ -149,32 +149,20 @@ class MirBuilder(ast.NodeVisitor):
 
         self._ast_node_to_ssa[binop] = value
 
-    def visit_If(self, if_):
-        # assert isinstance(if_.test, ast.Name)
+    def visit_Call(self, call):
+        # TODO: Name mangling...
+        # name = self.resolve_name_to_mangled_form(name, ...)
 
-        print(ast.dump(if_))
+        func = self.unit.resolve_into_function(call, self.item.scope)
 
-        with self._visiting_names():
-            self.visit(if_.test)
+        if func not in self._ebb.refs:
+            func = self._ebb.reference(func)
 
-        expr_value = self._ast_node_to_ssa[if_.test]
-    
-        if self._ebb.ssa_value_types[expr_value] != (i64 := self.unit.tcx.get_id_or_insert(Primitive.I64)):
-            expr_value = self._ebb.cast_bool_to_int(i64, expr_value)
+        # TODO: Argument passing...
 
-        with self._ebb.with_block() as ident:
-            for node in if_.body:
-                self.visit(node)
-            head = ident
+        result = self._ebb.call(func)
 
-        for node in if_.orelse:
-            with self._ebb.with_block() as ident:
-                self.visit(node)
-                tail = ident
-
-        one = self._ebb.int_const(1)
-        self._ebb.branch_icmp("eq", expr_value, one, head)
-        self._ebb.jump(tail)
+        self._ast_node_to_ssa[call] = result
 
     def visit_Compare(self, compare):
         left = compare.left
@@ -182,13 +170,13 @@ class MirBuilder(ast.NodeVisitor):
         with self._visiting_names():
             self.visit(left)
 
-        result_ty = self.unit.reveal_type(left, self.item.ribs)
+        result_ty = self.unit.reveal_type(left, self.item.scope)
         result = self._ast_node_to_ssa[left]
 
         i64 = self.unit.tcx.get_id_or_insert(Primitive.I64)
 
         for op, rvalue, in zip(compare.ops, compare.comparators):
-            rvalue_type = self.unit.reveal_type(rvalue, self.item.ribs)
+            rvalue_type = self.unit.reveal_type(rvalue, self.item.scope)
 
             self.visit(rvalue)
 
@@ -222,6 +210,29 @@ class MirBuilder(ast.NodeVisitor):
             result = self._ebb.bool_const(result, is_ssa_value=True)
 
         self._ast_node_to_ssa[compare] = result
+
+    def visit_If(self, if_):
+        with self._visiting_names():
+            self.visit(if_.test)
+
+        expr_value = self._ast_node_to_ssa[if_.test]
+    
+        if self._ebb.ssa_value_types[expr_value] != (i64 := self.unit.tcx.get_id_or_insert(Primitive.I64)):
+            expr_value = self._ebb.cast_bool_to_int(i64, expr_value)
+
+        with self._ebb.with_block() as ident:
+            for node in if_.body:
+                self.visit(node)
+            head = ident
+
+        for node in if_.orelse:
+            with self._ebb.with_block() as ident:
+                self.visit(node)
+                tail = ident
+
+        one = self._ebb.int_const(1)
+        self._ebb.branch_icmp("eq", expr_value, one, head)
+        self._ebb.jump(tail)
 
 
 @dataclass

@@ -35,7 +35,7 @@ def typecheck(
     # See also: https://rustc-dev-guide.rust-lang.org/name-resolution.html?highlight=rib#scopes-and-ribs
 
     ribs: List[Dict[str, TypeInfo]] = []
-    item.ribs = ribs
+    item.scope.ribs = ribs
 
     tcx = unit.type_ctx
 
@@ -100,7 +100,10 @@ def typecheck(
             assert isinstance(item.node, ast.FunctionDef)
             value = node.value
 
-            expr_ty = unit.reveal_type(node.value, ribs)
+            expr_ty = unit.reveal_type(value, scope)
+
+            if tcx.is_callable(expr_ty):  # "return f(...)" check `f`.output == `func`.output
+                expr_ty = tcx[expr_ty].output
 
             if expr_ty != tcx[item_type_id].output:
                 type_errors.append(TypeCheckError(f"Bad return value for function!"))
