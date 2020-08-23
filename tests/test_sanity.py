@@ -4,6 +4,7 @@ import pytest
 
 import monty
 from monty.errors import CompilationException
+from monty.typechecker import InferenceEngine, Primitive, Callable, List
 
 SOURCE = """
 def main() -> int:
@@ -24,8 +25,6 @@ class TestSanity:
         assert not func.arguments
 
     def test_basic_inference_engine(self):
-        from monty.typechecker import InferenceEngine, Primitive, Callable, List
-
         engine = InferenceEngine()
 
         i = engine.insert(Primitive.Unknown)

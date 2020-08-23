@@ -26,6 +26,10 @@ class CompilationUnit:
         type_id = self.type_ctx.insert(Primitive.Unknown)
         assert type_id == 0, f"Failed to slot Primitive.Unknown at type_id 0!"
 
+    @property
+    def tcx(self) -> InferenceEngine:
+        return self.type_ctx
+
     def get_primitives(self) -> Dict[str, TypeId]:
         i64 = self.type_ctx.get_id_or_insert(Primitive.I64)
 

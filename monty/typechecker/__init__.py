@@ -7,8 +7,10 @@ from .inference_engine import *
 from .constraints import *
 
 from monty.language import Item
-from monty.driver import CompilationUnit
 from monty.errors import TypeCheckError
+
+if TYPE_CHECKING:
+    from monty.driver import CompilationUnit
 
 
 @dataclass
@@ -17,7 +19,9 @@ class LValue:
     kind: TypeInfo = field(default=Primitive.Unknown)
 
 
-def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, type_errors = None):
+def typecheck(
+    item: Item, unit: "CompilationUnit", *, item_type_id: TypeId = 0, type_errors=None
+):
     assert isinstance(
         getattr(unit, "type_ctx", None), InferenceEngine
     ), "Malformed CompilationUnit does not have a valid InferenceEngine at `unit.type_ctx`"
@@ -50,7 +54,9 @@ def typecheck(item: Item, unit: CompilationUnit, *, item_type_id: TypeId = 0, ty
             tcx[type_id] == Primitive.Unknown
             and (func := scoped_item.function) is not None
         ):
-            arguments = tcx.get_id_or_insert(Primitive.Nothing if not func.arguments else Primitive.Unknown)
+            arguments = tcx.get_id_or_insert(
+                Primitive.Nothing if not func.arguments else Primitive.Unknown
+            )
             output = unit.resolve_annotation(scope, func.return_type)
 
             tcx[type_id] = Callable(arguments, output)
