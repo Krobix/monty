@@ -220,7 +220,7 @@ def compile_source(
 
     if __debug__:
         for block_id, block, in unit.modules["__main__"].output["main"].blocks.items():
-            print(f"{block_id=!r}:")
+            print(f"{block_id=!r}{block.parameters!r}:")
 
             for instr in block.body:
                 print(f"\t{instr!s}")

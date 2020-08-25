@@ -85,7 +85,7 @@ def typecheck(
             annotation = tcx[annotation_id]
 
             if node.value is not None:
-                ty = unit.reveal_type(node.value, ribs)
+                ty = unit.reveal_type(node.value, scope)
                 assert ty == annotation_id, f"{ty=!r}, {annotation_id=!r}"
 
             last_rib = (ribs and ribs[-1]) or {}

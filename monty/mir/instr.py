@@ -47,6 +47,47 @@ class BlockInstr(NamedTuple):
     def to_json(self, *, json_dumps=json.dumps) -> str:
         return json_dumps({"op": self.op, "args": self.args, "ret": self.ret})
 
+    @property
+    def product(self):
+        # pylint: disable=unpacking-non-sequence,not-an-iterable,unsubscriptable-object
+        if (op := self.op) in (InstrOp.IntConst, InstrOp.IntCmp, InstrOp.BInt, InstrOp.BoolConst, InstrOp.ISub):
+            return self.ret
+
+        elif op in (InstrOp.Assign, InstrOp.Jump, InstrOp.UseVar, InstrOp.BranchIntCmp, InstrOp.Return):
+            return None
+
+        else:
+            raise Exception(f"Unhandled case! {op=!r}")
+
+    @property
+    def ssa_values(self):
+        # pylint: disable=unpacking-non-sequence,not-an-iterable,unsubscriptable-object
+        if (op := self.op) in (InstrOp.UseVar, InstrOp.IntConst):
+            return [self.ret]
+
+        elif op in (InstrOp.StrConst, InstrOp.Assign):
+            print("<<", repr(self), self.args)
+            return self.args[:1]
+
+        elif op in (InstrOp.BInt, InstrOp.BoolConst):
+            return self.args[1:]
+
+        elif op in (InstrOp.NoOp, InstrOp.Jump) or not self.args and op is InstrOp.Return:
+            return ()
+
+        elif op is InstrOp.Return:
+            assert self.args
+            return self.args
+
+        elif op in (InstrOp.IAdd, InstrOp.ISub):
+            return self.args[0:2] + [self.ret]
+
+        elif op in (InstrOp.BranchIntCmp, InstrOp.IntCmp):
+            return self.args[1:3]  # ["eq", v1, v2, b3]
+
+        else:
+            raise Exception(f"Unhandled case! {op=!r}")
+
     def __str__(self) -> str:
         # pylint: disable=unpacking-non-sequence,not-an-iterable
         if self.ret is not None:
@@ -89,7 +130,7 @@ class BlockInstr(NamedTuple):
             assert self.args is not None
             var_id, *_ = self.args
             value = self.ret
-            rest = f"{var_id} = v{value}"
+            rest = f"{var_id} -> v{value}"
             ret = ""
 
         elif op is InstrOp.Assign:
@@ -97,6 +138,18 @@ class BlockInstr(NamedTuple):
             n, *_ = self.args
             rest = f"v{n}"
             ret = f"{self.ret} = "
+
+        elif op is InstrOp.Jump:
+            assert self.args is not None
+            n, *_ = self.args
+            rest = f"jump -> b{n}"
+            ret = ""
+
+        elif op is InstrOp.BranchIntCmp:
+            assert self.args is not None
+            mode, left, right, target, *_ = self.args
+            ret = ""
+            rest = f"br_icmp (v{left!r} {mode!r} v{right!r}) -> b{target}"
 
         else:
             rest = f"{self!r}"

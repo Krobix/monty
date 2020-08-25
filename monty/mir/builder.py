@@ -167,6 +167,8 @@ class MirBuilder(ast.NodeVisitor):
     def visit_Compare(self, compare):
         left = compare.left
 
+        print(f"@@ {ast.dump(compare)=!r}")
+
         with self._visiting_names():
             self.visit(left)
 
@@ -184,7 +186,7 @@ class MirBuilder(ast.NodeVisitor):
             rvalue_type = self.unit.tcx[rvalue_type]
 
             if rvalue_type == Primitive.Bool:
-                rvalue_ssa = self._ebb.bint(i64, rvalue_ssa)
+                rvalue_ssa = self._ebb.cast_bool_to_int(i64, rvalue_ssa)
                 rvalue_type = Primitive.I64
 
             if rvalue_type in (Primitive.I64, Primitive.I32, Primitive.Integer):
@@ -195,14 +197,14 @@ class MirBuilder(ast.NodeVisitor):
                 else:
                     result = self._ebb.icmp(ops[op], result, rvalue_ssa)
 
-                result = self._ebb.bint(i64, result)
+                result = self._ebb.cast_bool_to_int(i64, result)
                 result_ty = i64
             else:
                 raise Exception(f"Unkown rvalue type on comparator {rvalue_type=!r}")
 
         result_ty = self.unit.tcx[result_ty]
 
-        if result_ty != Primitive.Bool and result in (
+        if result_ty in (
             Primitive.I64,
             Primitive.I32,
             Primitive.Integer,
@@ -210,6 +212,8 @@ class MirBuilder(ast.NodeVisitor):
             result = self._ebb.bool_const(result, is_ssa_value=True)
 
         self._ast_node_to_ssa[compare] = result
+        self._ebb.ssa_value_types[result] = self.unit.tcx.get_id_or_insert(Primitive.Bool)
+        print(self._ast_node_to_ssa)
 
     def visit_If(self, if_):
         with self._visiting_names():
@@ -233,6 +237,34 @@ class MirBuilder(ast.NodeVisitor):
         one = self._ebb.int_const(1)
         self._ebb.branch_icmp("eq", expr_value, one, head)
         self._ebb.jump(tail)
+
+    def visit_While(self, while_):
+        i64 = self.unit.tcx.get_id_or_insert(Primitive.I64)
+
+        print(f"{ast.dump(while_)=!r}")
+
+        head = self._ebb.create_block()
+        body = self._ebb.create_block()
+        tail = self._ebb.create_block()
+
+        with self._visiting_names():
+            with self._ebb.with_block(head):                
+                self.visit(test := while_.test)
+                test_value = self._ast_node_to_ssa[test]
+                assert (a := self._ebb.ssa_value_types[test_value]) == (e := self.unit.tcx.get_id_or_insert(Primitive.Bool)), f"{a=!r} {e=!r}"
+                const_one = self._ebb.int_const(1)
+                test_value = self._ebb.cast_bool_to_int(i64, test_value)
+                self._ebb.branch_icmp("eq", test_value, const_one, body)
+                self._ebb.jump(tail)
+
+        with self._ebb.with_block(body):
+            for node in while_.body:
+                self.visit(node)
+            self._ebb.jump(head)
+
+        self._ebb.jump(head)
+        self._ebb.switch_to_block(tail)
+
 
 
 @dataclass

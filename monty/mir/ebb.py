@@ -18,6 +18,20 @@ class BasicBlock(NamedTuple):
     body: Tuple[BlockInstr]
     parameters: Dict[SSAValue, TypeId]
 
+    def get_all_referenced_values(self) -> Set[SSAValue]:
+        return {
+            value
+            for instr in self.body
+            for value in instr.ssa_values
+        }
+
+    def get_all_produced_values(self) -> Set[SSAValue]:
+        return {
+            instr.product
+            for instr in self.body
+            if instr.product is not None
+        }
+
 
 @final
 class Ebb(NamedTuple):
@@ -96,7 +110,27 @@ class FluidBlock:
         parameters = tuple(self.parameters[:])
         return_value = self.returns
         variables = {**self.variables}
-        blocks = {**self.blocks}
+
+        blocks = {}
+        for block_id, block in self.blocks.items():
+            if not block.parameters:
+                parameters = {}
+
+                referenced = block.get_all_referenced_values()
+                produced = block.get_all_produced_values()
+
+                print(f"{block_id=!r} {referenced=!r} {produced=!r}, {referenced.difference(produced)=!r}")
+
+                for foreign in referenced.difference(produced):
+                    parameters[foreign] = self.ssa_value_types[foreign]
+            else:
+                parameters = {**block.parameters}
+
+            body = tuple(block.body)
+
+            copy = BasicBlock(body=body, parameters=parameters)
+            blocks[block_id] = copy
+
         refs = {**self.refs}
 
         assert isinstance(return_value, int), f"{return_value=!r}"
@@ -126,10 +160,15 @@ class FluidBlock:
         return block_id
 
     @contextmanager
-    def with_block(self):
+    def with_block(self, target: Optional[BlockId] = None):
         """Create a new block, switch to it and then switch back."""
         previous_block_id = self.__cursor
-        new_block_id = self.create_block()
+
+        if target is None:
+            new_block_id = self.create_block()
+        else:
+            new_block_id = target
+
         self.switch_to_block(new_block_id)
         yield new_block_id
         self.switch_to_block(previous_block_id)
@@ -140,9 +179,9 @@ class FluidBlock:
         """Produce an integer constant."""
         return self._emit(op=InstrOp.IntConst, args=[value, bits, signed])
 
-    def bool_const(self, value: bool) -> SSAValue:
+    def bool_const(self, value: bool, *, is_ssa_value: bool = False) -> SSAValue:
         """Produce a boolean constant."""
-        return self._emit(op=InstrOp.BoolConst, args=[value])
+        return self._emit(op=InstrOp.BoolConst, args=[is_ssa_value, value])
 
     # Data-casting
 
@@ -158,7 +197,7 @@ class FluidBlock:
 
     def int_sub(self, left: SSAValue, right: SSAValue) -> SSAValue:
         """Add two integer values."""
-        return self._emit(op=InstrOp.IAdd, args=[left, right])
+        return self._emit(op=InstrOp.ISub, args=[left, right])
 
     def icmp(self, op: str, lhs: SSAValue, rhs: SSAValue) -> SSAValue:
         """Perform an integer-based comparison."""
@@ -174,6 +213,7 @@ class FluidBlock:
         """Assign a value to a variable."""
         self._typecheck(value, expected=ty)
         self.variables[ident] = ty
+        assert isinstance(value, SSAValue)
         return self._emit(op=InstrOp.Assign, args=[value], ret=ident)
 
     # Flow-control
