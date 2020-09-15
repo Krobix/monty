@@ -44,6 +44,9 @@ class Ebb(NamedTuple):
     # Ebb.variables.{variable_id} -> i64
     variables: Dict[VariableId, TypeId]
 
+    # Ebb.stack_slots.{slot_id} -> StackSlot(size: u32, ty: TypeId)
+    stack_slots: Dict[SSAValue, Tuple[int, TypeId]]
+
     # Ebb.refs.{ref_id} -> Function
     refs: Dict[SSAValue, Any]
 
@@ -70,6 +73,7 @@ class FluidBlock:
     returns: Optional[TypeId] = None
 
     variables: Dict[VariableId, TypeId] = field(default_factory=dict)
+    stack_slots: Dict[SSAValue, Tuple[int, TypeId]] = field(default_factory=dict)
     blocks: Dict[BlockId, BasicBlock] = field(default_factory=dict)
     ssa_value_types: Dict[SSAValue, TypeId] = field(default_factory=dict)
     refs: Dict[SSAValue, Any] = field(default_factory=dict)
@@ -80,6 +84,10 @@ class FluidBlock:
     @property
     def _cursor(self) -> BasicBlock:
         return self.blocks[self.__cursor]
+
+    @property
+    def current_block_id(self) -> BlockId:
+        return self.__cursor
 
     def _emit(self, *, op, args, ret: Any = _NULL) -> SSAValue:
         if ret is _NULL:
@@ -110,10 +118,11 @@ class FluidBlock:
         parameters = tuple(self.parameters[:])
         return_value = self.returns
         variables = {**self.variables}
+        stack_slots = {**self.stack_slots}
 
         blocks = {}
         for block_id, block in self.blocks.items():
-            if not block.parameters:
+            if False and not block.parameters:
                 parameters = {}
 
                 referenced = block.get_all_referenced_values()
@@ -139,6 +148,7 @@ class FluidBlock:
             parameters=parameters,
             return_value=return_value,
             variables=variables,
+            stack_slots=stack_slots,
             blocks=blocks,
             refs=refs
         )
@@ -215,6 +225,22 @@ class FluidBlock:
         self.variables[ident] = ty
         assert isinstance(value, SSAValue)
         return self._emit(op=InstrOp.Assign, args=[value], ret=ident)
+
+    # Stack operations
+
+    def create_stack_slot(self, size: int, ty: TypeId) -> SSAValue:
+        """Creates a new stack slot of some `size` and returns its ssavalue."""
+        self.__last_ssa_value += 1
+        slot = self.__last_ssa_value
+        self.stack_slots[slot] = (size, ty)
+        return slot
+
+    def stack_load(self, slot: SSAValue) -> SSAValue:
+        size, slot_memory_type, = self.stack_slots[slot]
+        return self._emit(op=InstrOp.StackLoad, args=[slot, size, slot_memory_type])
+
+    def stack_store(self, slot: SSAValue, value: SSAValue) -> SSAValue:
+        return self._emit(op=InstrOp.StackStore, args=[slot, value], ret=None)
 
     # Flow-control
 

@@ -41,6 +41,10 @@ class CompilationUnit:
             "bool": self.type_ctx.get_id_or_insert(Primitive.Bool),
         }
 
+    def size_of(self, type_id: TypeId) -> int:
+        """Get the size of a type in bytes."""
+        return self.tcx[type_id].size()
+
     def reveal_type(self, node: ast.AST, scope: Scope) -> Optional[TypeId]:
         """Attempt to reveal the [product] type of a AST node."""
         assert isinstance(node, ast.AST)

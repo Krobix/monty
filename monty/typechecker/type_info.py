@@ -18,6 +18,10 @@ class TypeInfo:
         """Produce a locally constructed representation of the type."""
         raise NotImplementedError("Failed to implement reconstruct.")
 
+    def size(self) -> int:
+        """Get the size of this type in bytes."""
+        return 0
+
 
 class Primitive(TypeInfo, IntEnum):
     """Primitive types that do not compound or have any special semantics (apart from `Unknown`)."""
@@ -38,6 +42,18 @@ class Primitive(TypeInfo, IntEnum):
 
     def reconstruct(self, tcx) -> str:
         return self.name
+
+    def size(self) -> int:
+        """Get the size of this type in bytes."""
+        return {
+            self.Bool: 1,
+            self.I64: 8,
+            self.I32: 4,
+            self.None_: 1,
+            self.Nothing: 0,
+            self.Integer: 4,
+            self.Unknown: 0,
+        }[self]
 
 
 @dataclass

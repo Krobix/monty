@@ -25,6 +25,10 @@ class InstrOp(IntEnum):
     UseVar = auto()
     Assign = auto()
 
+    StackStore = auto()
+    StackLoad = auto()
+    StackAddr = auto()
+
     Jump = auto()
     IntCmp = auto()
 

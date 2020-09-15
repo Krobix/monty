@@ -24,6 +24,7 @@ class MirBuilder(ast.NodeVisitor):
 
     _ebb: FluidBlock = field(default_factory=FluidBlock)
     _ast_node_to_ssa: Dict[ast.AST, SSAValue] = field(default_factory=dict)
+    _name_to_stack_slot: Dict[str, SSAValue] = field(default_factory=dict)
 
     @staticmethod
     def compile_item(item: Item, *, unit: CompilationUnit) -> Ebb:
@@ -56,7 +57,10 @@ class MirBuilder(ast.NodeVisitor):
     def _visiting_names(self):
         def visit_name(self, name):
             assert isinstance(name.ctx, ast.Load)
-            self._ast_node_to_ssa[name] = value = self._ebb.use(name.id)
+            # self._ast_node_to_ssa[name] = value = self._ebb.use(name.id)
+            print(f"{self._name_to_stack_slot=!r}")
+            slot = self._name_to_stack_slot[name.id]
+            self._ast_node_to_ssa[name] = value = self._ebb.stack_load(slot)
             self._ebb.ssa_value_types[value] = self.unit.reveal_type(name, self.item.scope)
 
         with swapattr(self, "_visit_name", None, visit_name):
@@ -75,7 +79,15 @@ class MirBuilder(ast.NodeVisitor):
 
         # variable_id = self.unit.get_variable_id(target_id, self.item)
 
-        self._ebb.assign(ident=target_id, value=assign_value, ty=value_ty)
+        # self._ebb.assign(ident=target_id, value=assign_value, ty=value_ty)
+        if target_id not in self._name_to_stack_slot:
+            ty_size = self.unit.size_of(value_ty)
+            self._name_to_stack_slot[target_id] = slot = self._ebb.create_stack_slot(ty_size, value_ty)
+        else:
+            slot = self._name_to_stack_slot[target_id]
+
+        self._ebb.stack_store(slot, assign_value)
+        print(f"{self._name_to_stack_slot=!r}")
 
     def visit_Pass(self, _):
         self._ebb.nop()
@@ -229,6 +241,7 @@ class MirBuilder(ast.NodeVisitor):
                 self.visit(node)
             head = ident
 
+        tail = None
         for node in if_.orelse:
             with self._ebb.with_block() as ident:
                 self.visit(node)
@@ -236,7 +249,9 @@ class MirBuilder(ast.NodeVisitor):
 
         one = self._ebb.int_const(1)
         self._ebb.branch_icmp("eq", expr_value, one, head)
-        self._ebb.jump(tail)
+
+        if tail is not None:
+            self._ebb.jump(tail)
 
     def visit_While(self, while_):
         i64 = self.unit.tcx.get_id_or_insert(Primitive.I64)
